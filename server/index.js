@@ -18,7 +18,10 @@ const PORT = process.env.PORT || 5000;
 connectDB();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['https://team-collab-platform-le7y.vercel.app', 'http://localhost:5173'],
+  credentials: true
+}));
 app.use(express.json());
 app.use('/api/teams', teamRoutes);
 
@@ -26,7 +29,7 @@ app.use('/api/teams', teamRoutes);
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: '*',
+    origin: ['https://team-collab-platform-le7y.vercel.app', 'http://localhost:5173'],
     methods: ['GET', 'POST']
   }
 });
