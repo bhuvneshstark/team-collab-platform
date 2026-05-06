@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { auth } from '../config/firebase';
 import api from '../services/api';
