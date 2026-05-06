@@ -2,7 +2,7 @@ import axios from 'axios';
 import { auth } from '../config/firebase';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: 'https://team-collab-api.onrender.com/api',
 });
 
 // Attach Firebase token to every request

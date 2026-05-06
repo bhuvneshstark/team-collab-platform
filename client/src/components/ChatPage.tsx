@@ -51,7 +51,7 @@ export default function ChatPage() {
       // only create one socket
       if (socketRef.current?.connected) return;
 
-      const socket = io('http://localhost:5000', { auth: { token: idToken } });
+      const socket = io('https://team-collab-api.onrender.com', { auth: { token: idToken } }); 
       socketRef.current = socket;
 
       socket.on('connect', () => {
