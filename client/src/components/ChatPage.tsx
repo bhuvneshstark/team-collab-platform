@@ -6,7 +6,7 @@ import useCurrentUser from '../hooks/useCurrentUser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Send } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 
 interface Message {
   _id: string;
@@ -22,10 +22,11 @@ interface Message {
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [content, setContent] = useState('');
+  const [connected, setConnected] = useState(false);
   const { user } = useCurrentUser();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const messageIds = useRef(new Set<string>()); // to prevent duplicates
+  const messageIds = useRef(new Set<string>());
 
   // Fetch message history
   useEffect(() => {
@@ -33,36 +34,42 @@ export default function ChatPage() {
       .then(res => {
         const msgs: Message[] = res.data.messages.reverse();
         setMessages(msgs);
-        // populate the set with existing ids
         msgs.forEach(m => messageIds.current.add(m._id));
       })
       .catch(() => {});
   }, []);
 
-  // Socket connection with strict cleanup
+  // Socket connection
   useEffect(() => {
-    const token = auth.currentUser?.getIdToken;
-    if (!token) return;
+    let socket: Socket | null = null;
 
-    const connectSocket = async () => {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) return;
+    const setupSocket = async () => {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
 
-      // only create one socket
-      if (socketRef.current?.connected) return;
-
-      const socket = io('https://team-collab-api.onrender.com', { auth: { token: idToken } }); 
+      socket = io('https://team-collab-api-hvrn.onrender.com', {
+        auth: { token },
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+      });
       socketRef.current = socket;
 
       socket.on('connect', () => {
-        api.get('/auth/me').then(res => {
-          const teamId = res.data.teamId;
-          if (teamId) socket.emit('join-team', teamId);
-        }).catch(() => {});
+        setConnected(true);
+        api.get('/auth/me')
+          .then(res => {
+            const teamId = res.data.teamId;
+            if (teamId) socket?.emit('join-team', teamId);
+          })
+          .catch(() => {});
+      });
+
+      socket.on('disconnect', () => {
+        setConnected(false);
       });
 
       const handleNewMessage = (msg: Message) => {
-        // prevent exact duplicate (by _id)
         if (!messageIds.current.has(msg._id)) {
           messageIds.current.add(msg._id);
           setMessages(prev => [...prev, msg]);
@@ -71,23 +78,22 @@ export default function ChatPage() {
 
       socket.on('new-message', handleNewMessage);
 
-      // Cleanup listener when component unmounts or effect re-runs
+      // Cleanup
       return () => {
-        socket.off('new-message', handleNewMessage);
-        socket.disconnect();
+        socket?.off('new-message', handleNewMessage);
+        socket?.disconnect();
         socketRef.current = null;
       };
     };
 
-    let cleanup: (() => void) | undefined;
-    connectSocket().then(cleanupFn => {
-      cleanup = cleanupFn;
-    });
+    setupSocket();
 
     return () => {
-      cleanup?.();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
     };
-  }, []); // empty – runs once in production, twice in StrictMode (handled by cleanup)
+  }, []);
 
   // Auto‑scroll
   useEffect(() => {
@@ -96,11 +102,12 @@ export default function ChatPage() {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim()) return;
+    if (!content.trim() || !connected) return;
+
     try {
       await api.post('/messages', { content });
       setContent('');
-      // Message will appear via socket – NO manual insertion
+      // The new message will arrive via socket – do NOT add it manually
     } catch (err) {
       console.error('Failed to send message');
     }
@@ -112,6 +119,11 @@ export default function ChatPage() {
 
       <Card className="flex-1 overflow-hidden flex flex-col">
         <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          {!connected && (
+            <div className="flex items-center justify-center text-muted-foreground gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Connecting to chat...
+            </div>
+          )}
           {messages.map((msg) => (
             <div
               key={msg._id}
@@ -143,8 +155,9 @@ export default function ChatPage() {
             onChange={(e) => setContent(e.target.value)}
             placeholder="Type a message..."
             className="flex-1"
+            disabled={!connected}
           />
-          <Button type="submit" size="icon">
+          <Button type="submit" size="icon" disabled={!connected}>
             <Send className="h-4 w-4" />
           </Button>
         </form>
